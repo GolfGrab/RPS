@@ -107,21 +107,28 @@ contract RPS is CommitReveal {
         uint64 diff = (p0Choice + 7 - p1Choice) % 7;
         address payable account0 = payable(player[0].addr);
         address payable account1 = payable(player[1].addr);
+        uint256 winner; // 0 - player 0 , 1 - player 1 , 2 - draw
 
         if (diff == 0) {
             // draw
             account0.transfer(reward / 2);
             account1.transfer(reward / 2);
+            winner = 2;
         } else if (diff <= 3 && diff != 0) {
             // player 0 win
             account0.transfer(reward);
+            winner = 0;
         } else if (diff > 3 && diff != 0) {
             // player 1 win
             account1.transfer(reward);
+            winner = 1;
         }
 
+        emit Winner(winner, p0Choice, p1Choice);
         _resetGame();
     }
+
+    event Winner(uint256 winner, uint64 p0Choice, uint64 p1Choice);
 
     function _resetGame() private {
         numPlayer = 0;
@@ -145,18 +152,37 @@ contract RPS is CommitReveal {
             account.transfer(reward);
             _resetGame();
         }
-
-        // return money if both players not input their choice or not revealed their choice in time
-        if (numPlayer == 2 && numShow == 0) {
+        // return money if both players not input their choice in time
+        else if (numPlayer == 2 && numInput == 0) {
             address payable account0 = payable(player[0].addr);
             address payable account1 = payable(player[1].addr);
             account0.transfer(reward / 2);
             account1.transfer(reward / 2);
             _resetGame();
         }
-
+        // return money if both players not revealed their choice in time
+        else if (numPlayer == 2 && numInput == 2 && numShow == 0) {
+            address payable account0 = payable(player[0].addr);
+            address payable account1 = payable(player[1].addr);
+            account0.transfer(reward / 2);
+            account1.transfer(reward / 2);
+            _resetGame();
+        }
+        // punish player who not input their choice in time
+        else if (numPlayer == 2 && numInput == 1) {
+            if (player[0].choice == 7) {
+                // player 0 has not input their choice
+                address payable account = payable(player[1].addr);
+                account.transfer(reward);
+            } else if (player[1].choice == 7) {
+                // player 1 has not input their choice
+                address payable account = payable(player[0].addr);
+                account.transfer(reward);
+            }
+            _resetGame();
+        }
         // punish player who not revealed their choice in time
-        if (numPlayer == 2 && numShow == 1) {
+        else if (numPlayer == 2 && numShow == 1) {
             if (player[0].choice == 3) {
                 // player 0 has not revealed their choice
                 address payable account = payable(player[1].addr);

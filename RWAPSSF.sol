@@ -170,11 +170,11 @@ contract RPS is CommitReveal {
         }
         // punish player who not input their choice in time
         else if (numPlayer == 2 && numInput == 1) {
-            if (player[0].choice == 7) {
+            if (player[0].isCommitted == false) {
                 // player 0 has not input their choice
                 address payable account = payable(player[1].addr);
                 account.transfer(reward);
-            } else if (player[1].choice == 7) {
+            } else if (player[1].isCommitted == false) {
                 // player 1 has not input their choice
                 address payable account = payable(player[0].addr);
                 account.transfer(reward);
@@ -183,11 +183,11 @@ contract RPS is CommitReveal {
         }
         // punish player who not revealed their choice in time
         else if (numPlayer == 2 && numShow == 1) {
-            if (player[0].choice == 3) {
+            if (player[0].choice == 7) {
                 // player 0 has not revealed their choice
                 address payable account = payable(player[1].addr);
                 account.transfer(reward);
-            } else if (player[1].choice == 3) {
+            } else if (player[1].choice == 7) {
                 // player 1 has not revealed their choice
                 address payable account = payable(player[0].addr);
                 account.transfer(reward);

@@ -8,11 +8,14 @@ contract RPS is CommitReveal {
         uint256 choice; // 0 - Rock, 1 - Paper , 2 - Scissors, 3 - undefined
         address addr;
     }
-    mapping(uint256 => Player) public player;  // only player id = 0 and player id = 1 only
+    mapping(uint256 => Player) public player; // only player id = 0 and player id = 1 only
     uint256 public numPlayer = 0;
-    uint256 public reward = 0;
     uint256 public numInput = 0;
     uint256 public numShow = 0;
+    uint256 public reward = 0;
+
+    uint256 public constant TIME_IDLE_DURATION = 1 minutes;
+    uint256 public lastActionTime = block.timestamp;
 
     function getHashedChoiceWithSalt(uint256 choice, string memory salt)
         external
@@ -31,7 +34,9 @@ contract RPS is CommitReveal {
         player[numPlayer].choice = 3;
         emit PlayerAdded(numPlayer, msg.sender);
         numPlayer++;
+        lastActionTime = block.timestamp;
     }
+
     event PlayerAdded(uint256 id, address addr);
 
     function inputHashedChoice(bytes32 hashedChoiceWithSalt, uint256 idx)
@@ -41,6 +46,7 @@ contract RPS is CommitReveal {
         require(msg.sender == player[idx].addr, "invelid address");
         commit(getHash(hashedChoiceWithSalt));
         numInput++;
+        lastActionTime = block.timestamp;
     }
 
     function showChoice(
@@ -57,10 +63,12 @@ contract RPS is CommitReveal {
         player[idx].choice = choice;
         numShow++;
         emit ChoiceRevealed(idx, choice);
+        lastActionTime = block.timestamp;
         if (numShow == 2) {
             _checkWinnerAndPay();
         }
     }
+
     event ChoiceRevealed(uint256 id, uint256 choice);
 
     function _checkWinnerAndPay() private {
@@ -80,8 +88,51 @@ contract RPS is CommitReveal {
             account1.transfer(reward / 2);
         }
 
-        numInput = 0;
+        _resetGame();
+    }
+
+    function _resetGame() private {
         numPlayer = 0;
+        numInput = 0;
         numShow = 0;
+        reward = 0;
+    }
+
+    function returnMoney() public {
+        require(
+            block.timestamp - lastActionTime > TIME_IDLE_DURATION,
+            "not enough time"
+        );
+        require(numPlayer > 0, "no player");
+
+        // return money if only one player has joined
+        if (numPlayer == 1) {
+            address payable account = payable(player[0].addr);
+            account.transfer(reward);
+            _resetGame();
+        }
+
+        // return money if both players not input their choice or not revealed their choice in time
+        if (numPlayer == 2 && numShow == 0) {
+            address payable account0 = payable(player[0].addr);
+            address payable account1 = payable(player[1].addr);
+            account0.transfer(reward / 2);
+            account1.transfer(reward / 2);
+            _resetGame();
+        }
+
+        // punish player who not revealed their choice in time
+        if (numPlayer == 2 && numShow == 1) {
+            if (player[0].choice == 3) {
+                // player 0 has not revealed their choice
+                address payable account = payable(player[1].addr);
+                account.transfer(reward);
+            } else if (player[1].choice == 3) {
+                // player 1 has not revealed their choice
+                address payable account = payable(player[0].addr);
+                account.transfer(reward);
+            }
+            _resetGame();
+        }
     }
 }

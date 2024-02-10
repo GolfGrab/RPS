@@ -4,10 +4,39 @@ pragma solidity >=0.7.0 <0.9.0;
 import "CommitReveal.sol";
 
 contract RPS is CommitReveal {
+    /* 
+    Rules:
+
+    # choices
+    0 - Rock
+    1 - Water
+    2 - Air
+    3 - Paper
+    4 - Sponge
+    5 - Scissors
+    6 - Fire
+
+    # winning condition
+    ROCK POUNDS OUT FIRE, CRUSHES SCISSORS & SPONGE. 0 > 6, 0 > 5, 0 > 4
+    FIRE MELTS SCISSORS, BURNS PAPER & SPONGE. 6 > 5, 6 > 3, 6 > 4
+    SCISSORS SWISH THROUGH AIR, CUT PAPER & SPONGE. 5 > 2, 5 > 3, 5 > 4
+    SPONGE SOAKS PAPER, USES AIR POCKETS, ABSORBS WATER. 4 > 3, 4 > 2, 4 > 1
+    PAPER FANS AIR, COVERS ROCK, FLOATS ON WATER. 3 > 2, 3 > 0, 3 > 1
+    AIR BLOWS OUT FIRE, ERODES ROCK, EVAPORATES WATER. 2 > 6, 2 > 0, 2 > 1
+    WATER ERODES ROCK, PUTS OUT FIRE, RUSTS SCISSORS. 1 > 0, 1 > 6, 1 > 5
+
+    # winning logic
+    if ( left choice - right choice ) % 7 <= 3 and not equal to 0, left win
+    if ( left choice - right choice ) % 7 > 3 and not equal to 0, right win
+    if ( left choice - right choice ) % 7 == 0, draw
+    */
+
     struct Player {
-        uint256 choice; // 0 - Rock, 1 - Paper , 2 - Scissors, 3 - undefined
+        uint64 choice; // 0-Rock 1-Water 2-Air 3-Paper 4-Sponge 5-Scissors 6-Fire 7-Unrevealed
+        bool isCommitted;
         address addr;
     }
+
     mapping(uint256 => Player) public player; // only player id = 0 and player id = 1 only
     uint256 public numPlayer = 0;
     uint256 public numInput = 0;
@@ -17,7 +46,7 @@ contract RPS is CommitReveal {
     uint256 public constant TIME_IDLE_DURATION = 1 minutes;
     uint256 public lastActionTime = block.timestamp;
 
-    function getHashedChoiceWithSalt(uint256 choice, string memory salt)
+    function getHashedChoiceWithSalt(uint64 choice, string memory salt)
         external
         pure
         returns (bytes32)
@@ -31,7 +60,7 @@ contract RPS is CommitReveal {
         require(msg.value == 1 ether, "incorrect value");
         reward += msg.value;
         player[numPlayer].addr = msg.sender;
-        player[numPlayer].choice = 3;
+        player[numPlayer].choice = 7; // 7 means unrevealed choice
         emit PlayerAdded(numPlayer, msg.sender);
         numPlayer++;
         lastActionTime = block.timestamp;
@@ -44,20 +73,21 @@ contract RPS is CommitReveal {
     {
         require(numPlayer == 2, "not enough player");
         require(msg.sender == player[idx].addr, "invelid address");
+        require(player[idx].isCommitted == false, "already committed");
         commit(getHash(hashedChoiceWithSalt));
         numInput++;
         lastActionTime = block.timestamp;
     }
 
     function showChoice(
-        uint256 choice,
+        uint64 choice,
         string memory salt,
         uint256 idx
     ) public {
-        require(numPlayer == 2);
-        require(numInput == 2);
-        require(msg.sender == player[idx].addr);
-        require(choice == 0 || choice == 1 || choice == 2);
+        require(numPlayer == 2, "not enough player");
+        require(numInput == 2, "not enough input");
+        require(msg.sender == player[idx].addr, "invelid address");
+        require(choice >= 0 && choice <= 6, "invalid choice");
         bytes32 encodedSalt = bytes32(abi.encodePacked(salt));
         reveal(keccak256(abi.encodePacked(choice, encodedSalt)));
         player[idx].choice = choice;
@@ -69,23 +99,25 @@ contract RPS is CommitReveal {
         }
     }
 
-    event ChoiceRevealed(uint256 id, uint256 choice);
+    event ChoiceRevealed(uint256 id, uint64 choice);
 
     function _checkWinnerAndPay() private {
-        uint256 p0Choice = player[0].choice;
-        uint256 p1Choice = player[1].choice;
+        uint64 p0Choice = player[0].choice;
+        uint64 p1Choice = player[1].choice;
+        uint64 diff = (p0Choice + 7 - p1Choice) % 7;
         address payable account0 = payable(player[0].addr);
         address payable account1 = payable(player[1].addr);
-        if ((p0Choice + 1) % 3 == p1Choice) {
-            // to pay player[1]
-            account1.transfer(reward);
-        } else if ((p1Choice + 1) % 3 == p0Choice) {
-            // to pay player[0]
-            account0.transfer(reward);
-        } else {
-            // to split reward
+
+        if (diff == 0) {
+            // draw
             account0.transfer(reward / 2);
             account1.transfer(reward / 2);
+        } else if (diff <= 3 && diff != 0) {
+            // player 0 win
+            account0.transfer(reward);
+        } else if (diff > 3 && diff != 0) {
+            // player 1 win
+            account1.transfer(reward);
         }
 
         _resetGame();
@@ -96,6 +128,8 @@ contract RPS is CommitReveal {
         numInput = 0;
         numShow = 0;
         reward = 0;
+        delete player[0];
+        delete player[1];
     }
 
     function returnMoney() public {

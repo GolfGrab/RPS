@@ -7,10 +7,10 @@ contract TimeUnit {
   // Declaring a  state variable that will  
   // store the current block timestamp 
   // as seconds since unix epoch(January 1, 1970) 
-  uint256 public startTime; 
+  uint256 private startTime; 
   
   // setting the startTime variable 
-  function setStartTime() public { 
+  function _setStartTime() internal { 
     startTime = block.timestamp; 
   } 
     

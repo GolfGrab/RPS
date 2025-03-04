@@ -159,6 +159,7 @@ function _checkWinnerAndPay() private {
 function _resetGame() private {
     for (uint i = 0; i < players.length; i++) {
         player_not_played[players[i]] = true;
+        player_not_revealed[players[i]] = true;
         player_choice[players[i]] = Choice.Scissors;
         player_hashedChoice[players[i]] = getHashedChoice(
             Choice.Scissors,

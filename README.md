@@ -41,11 +41,11 @@ The contract allows only two players to participate in the game and only the all
 
 ```solidity
 address[] public allowedPlayers = [
-      0x5B38Da6a701c568545dCfcB03FcB875f56beddC4,
-      0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2,
-      0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db,
-      0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB
-  ];
+    0x5B38Da6a701c568545dCfcB03FcB875f56beddC4,
+    0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2,
+    0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db,
+    0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB
+];
 ```
 
 ### Preventing Funds from Being Locked
@@ -73,7 +73,51 @@ The contract handles scenarios where players do not complete their actions withi
 
 - **Function:** `withdraw()`
 - **Description:** Allows players to withdraw their funds if the game is not completed within the specified time limit.
-- **Condition:** Checks if both players have not played or revealed their choices and splits the reward accordingly.
+- **Condition:** Checks if some players have not played or revealed their choices within the time limit and allow players to withdraw their funds with a penalty for the player who did not take action.
+
+```solidity
+function withdraw() public {
+    require(elapsedSeconds() >= TIME_LIMIT);
+    require(numPlayer > 0);
+
+    if (numPlayer == 1) {
+        // withdraw reward if another player not join
+        address payable account0 = payable(players[0]);
+        account0.transfer(reward);
+    } else if (numPlayer == 2) {
+        address payable account0 = payable(players[0]);
+        address payable account1 = payable(players[1]);
+
+        // penalty for player who not play
+        if (
+            player_not_played[players[0]] && player_not_played[players[1]]
+        ) {
+            // split reward if both player not play
+            account0.transfer(reward / 2);
+            account1.transfer(reward / 2);
+        } else if (player_not_played[players[0]]) {
+            account1.transfer(reward);
+        } else if (player_not_played[players[1]]) {
+            account0.transfer(reward);
+        }
+        // penalty for player who not reveal
+        else if (
+            player_not_revealed[players[0]] &&
+            player_not_revealed[players[1]]
+        ) {
+            // split reward if both player not reveal
+            account0.transfer(reward / 2);
+            account1.transfer(reward / 2);
+        } else if (player_not_revealed[players[0]]) {
+            account1.transfer(reward);
+        } else if (player_not_revealed[players[1]]) {
+            account0.transfer(reward);
+        }
+    }
+
+    _resetGame();
+}
+```
 
 ### Revealing Choices and Determining the Winner
 
@@ -81,8 +125,53 @@ Once both players reveal their choices, the contract determines the winner and d
 
 - **Function:** `_checkWinnerAndPay()`
 - **Description:** Compares the choices of both players and transfers the reward to the winner or splits it in case of a tie.
+
+```solidity
+function _checkWinnerAndPay() private {
+    Choice p0Choice = player_choice[players[0]];
+    Choice p1Choice = player_choice[players[1]];
+    address payable account0 = payable(players[0]);
+    address payable account1 = payable(players[1]);
+    if (
+        (uint(p0Choice) + 1) % 5 == uint(p1Choice) ||
+        (uint(p0Choice) + 3) % 5 == uint(p1Choice)
+    ) {
+        // pay player[1]
+        account1.transfer(reward);
+    } else if (
+        (uint(p1Choice) + 1) % 5 == uint(p0Choice) ||
+        (uint(p1Choice) + 3) % 5 == uint(p0Choice)
+    ) {
+        // pay player[0]
+        account0.transfer(reward);
+    } else {
+        // to split reward
+        account0.transfer(reward / 2);
+        account1.transfer(reward / 2);
+    }
+}
+```
+
 - **Function:** `_resetGame()`
 - **Description:** Resets the game state for a new round.
+
+```solidity
+function _resetGame() private {
+    for (uint i = 0; i < players.length; i++) {
+        player_not_played[players[i]] = true;
+        player_choice[players[i]] = Choice.Scissors;
+        player_hashedChoice[players[i]] = getHashedChoice(
+            Choice.Scissors,
+            ""
+        );
+    }
+    numInput = 0;
+    numReveal = 0;
+    numPlayer = 0;
+    reward = 0;
+    players = new address[](0);
+}
+```
 
 ## Usage
 

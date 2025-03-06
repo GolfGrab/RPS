@@ -114,14 +114,14 @@ contract RPS is CommitReveal, TimeUnit {
             (uint(p0Choice) + 1) % 5 == uint(p1Choice) ||
             (uint(p0Choice) + 3) % 5 == uint(p1Choice)
         ) {
-            // pay player[1]
-            account1.transfer(reward);
+            // pay player[0]
+            account0.transfer(reward);
         } else if (
             (uint(p1Choice) + 1) % 5 == uint(p0Choice) ||
             (uint(p1Choice) + 3) % 5 == uint(p0Choice)
         ) {
-            // pay player[0]
-            account0.transfer(reward);
+            // pay player[1]
+            account1.transfer(reward);
         } else {
             // to split reward
             account0.transfer(reward / 2);

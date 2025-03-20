@@ -2,11 +2,23 @@
 
 pragma solidity >=0.7.0 <0.9.0;
 
+// ทำการปรับปรุง contract นี้ตามที่ได้ทำในปฏิบัติการที่ 5 แต่มีเงื่อนไขเพิ่มเติมต่อไปนี้
+// ยกเลิกข้อจำกัดที่ให้เฉพาะต้องเป็นผู้เล่นจาก 4 account แต่ให้ผู้เล่นมาจาก account ใดๆก็ได้
+// แทนที่จะให้ผู้เล่นส่งเงินมาที่ contract นี้ ให้ผู้เล่น approve ให้ contract นี้สามารถถอนเงิน 0.000001 ether จาก wallet หรือ account ของผู้เล่นได้
+// Contract จะต้องเช็คว่าผู้เล่นทั้งสองได้ approve การถอนเงิน โดยการเช็คที่ตัวแปร allowance (ดูตัวอย่างจาก TokenSwap contract ที่ได้คุยกันในชั้นเรียน) 
+// เมื่อ player ทั้งสองได้ commit แล้ว จะต้องมีการโอนเงินจาก account ของ player ทั้งสองมาไว้ที่ contract ทันที
+// ถ้า player คนใดคนหนึ่งไม่ reveal ตามกำหนดเวลา player อีกคนสามารถถอนเงินทั้งหมดออกจาก contract เข้ากระเป๋าตัวเองได้
+// ถ้า player ทั้งสองไม่ reveal ตามกำหนดเวลา ให้ account ใดๆก็ได้มีสิทธิมาถอนเงินจาก contract นี้เข้ากระเป่าตัวเองทั้งหมด
+
+
 import "./CommitReveal.sol";
 import "./TimeUnit.sol";
+import "./IERC20.sol";
 contract RPS is CommitReveal, TimeUnit {
     uint public numPlayer = 0;
     uint public reward = 0;
+    uint public constant FEE = 0.000001 ether; // 1 * 10^12 wei
+
 
     // 0 - Scissors, 1 - Paper, 2 - Rock, 3 - Lizard, 4 - Spock
     enum Choice {
@@ -22,12 +34,9 @@ contract RPS is CommitReveal, TimeUnit {
     mapping(address => bool) public player_not_played;
     mapping(address => bool) public player_not_revealed;
     address[] public players;
-    address[] public allowedPlayers = [
-        0x5B38Da6a701c568545dCfcB03FcB875f56beddC4,
-        0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2,
-        0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db,
-        0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB
-    ];
+
+    // ERC20 token contract
+    IERC20 public token = IERC20(0xa5A6701E17A6c1204F49500D601dcC26D573Cd5F);
 
     uint public numInput = 0;
     uint public numReveal = 0;
@@ -35,15 +44,6 @@ contract RPS is CommitReveal, TimeUnit {
 
     function addPlayer() public payable {
         require(numPlayer < 2);
-
-        bool isPlayerAllowed = false;
-        for (uint i = 0; i < allowedPlayers.length; i++) {
-            if (msg.sender == allowedPlayers[i]) {
-                isPlayerAllowed = true;
-                break;
-            }
-        }
-        require(isPlayerAllowed);
 
         if (numPlayer == 0) {
             _setStartTime();
@@ -56,8 +56,10 @@ contract RPS is CommitReveal, TimeUnit {
             // not allow player to play after time limit
             require(elapsedSeconds() < TIME_LIMIT);
         }
-        require(msg.value == 1 ether);
-        reward += msg.value;
+        // Check token allowance
+        require(token.allowance(msg.sender, address(this)) >= FEE, "Insufficient token allowance");
+
+        reward += FEE;
         player_not_played[msg.sender] = true;
         player_not_revealed[msg.sender] = true;
         players.push(msg.sender);
@@ -80,6 +82,12 @@ contract RPS is CommitReveal, TimeUnit {
         player_not_played[msg.sender] = false;
         player_hashedChoice[msg.sender] = hashedChoice;
         numInput++;
+
+        if (numInput == 2) {
+            // transfer fee from players to contract
+            token.transferFrom(players[0], address(this), FEE);
+            token.transferFrom(players[1], address(this), FEE);
+        }
     }
 
     function revealChoice(Choice choice, string memory secret) public {
@@ -132,6 +140,7 @@ contract RPS is CommitReveal, TimeUnit {
     function withdraw() public {
         require(elapsedSeconds() >= TIME_LIMIT);
         require(numPlayer > 0);
+        address payable sender = payable(msg.sender);
 
         if (numPlayer == 1) {
             // withdraw reward if another player not join
@@ -145,9 +154,9 @@ contract RPS is CommitReveal, TimeUnit {
             if (
                 player_not_played[players[0]] && player_not_played[players[1]]
             ) {
-                // split reward if both player not play
-                account0.transfer(reward / 2);
-                account1.transfer(reward / 2);
+                // who trigger withdraw get reward
+                require(msg.sender == account0 || msg.sender == account1);
+                sender.transfer(reward);
             } else if (player_not_played[players[0]]) {
                 account1.transfer(reward);
             } else if (player_not_played[players[1]]) {
@@ -158,9 +167,9 @@ contract RPS is CommitReveal, TimeUnit {
                 player_not_revealed[players[0]] &&
                 player_not_revealed[players[1]]
             ) {
-                // split reward if both player not reveal
-                account0.transfer(reward / 2);
-                account1.transfer(reward / 2);
+                // who trigger withdraw get reward
+                require(msg.sender == account0 || msg.sender == account1);
+                sender.transfer(reward);
             } else if (player_not_revealed[players[0]]) {
                 account1.transfer(reward);
             } else if (player_not_revealed[players[1]]) {
